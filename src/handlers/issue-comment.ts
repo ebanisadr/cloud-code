@@ -16,6 +16,7 @@ import { initCloudCodeDir } from '../harness/session';
 import { installClaude } from '../harness/runner';
 import { renderTemplate, TemplateVars } from '../prompt/template';
 import { DEFAULT_PROMPT_TEMPLATE } from '../prompt/defaults';
+import { fetchFilteredIssueComments } from '../github/comments';
 import { ActionConfig, executeTurn } from './common';
 
 export async function handleIssueComment(
@@ -48,6 +49,11 @@ export async function handleIssueComment(
   await configureGit();
   await checkoutBranch(branchName);
 
+  // Fetch issue comments from allowed users
+  const issueComments = await fetchFilteredIssueComments(
+    octokit, owner, repo, issueNumber, config.allowedUsers
+  );
+
   // Render prompt with the comment as additional context
   const templateVars: TemplateVars = {
     issue: {
@@ -56,6 +62,7 @@ export async function handleIssueComment(
       body: issue.body || '',
       labels: (issue.labels || []).map((l: { name: string }) => l.name).join(', '),
       author: issue.user?.login || '',
+      comments: issueComments,
     },
     repo: {
       name: repo,

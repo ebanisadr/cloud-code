@@ -16,6 +16,7 @@ import { commitAndPush } from '../github/branch';
 import { installClaude } from '../harness/runner';
 import { renderTemplate, TemplateVars } from '../prompt/template';
 import { DEFAULT_PROMPT_TEMPLATE } from '../prompt/defaults';
+import { fetchFilteredIssueComments } from '../github/comments';
 import { ActionConfig, executeTurn } from './common';
 
 export async function handleIssueOpened(
@@ -46,6 +47,11 @@ export async function handleIssueOpened(
   await configureGit();
   await checkoutBranch(branchName);
 
+  // Fetch issue comments from allowed users
+  const issueComments = await fetchFilteredIssueComments(
+    octokit, owner, repo, issueNumber, config.allowedUsers
+  );
+
   // Render prompt
   const templateVars: TemplateVars = {
     issue: {
@@ -54,6 +60,7 @@ export async function handleIssueOpened(
       body: issue.body || '',
       labels: (issue.labels || []).map((l: { name: string }) => l.name).join(', '),
       author: issue.user?.login || '',
+      comments: issueComments,
     },
     repo: {
       name: repo,

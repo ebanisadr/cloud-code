@@ -5,6 +5,7 @@ export interface TemplateVars {
     body: string;
     labels: string;
     author: string;
+    comments: string;
   };
   repo: {
     name: string;

@@ -34,7 +34,10 @@ async function run(): Promise<void> {
 
     if (eventName === 'issues' && action === 'opened') {
       await handleIssueOpened(octokit, config);
-    } else if (eventName === 'issue_comment' && action === 'created') {
+    } else if (eventName === 'issues' && action === 'edited') {
+      // Issue description was refined — start a new attempt with the updated text
+      await handleIssueComment(octokit, config);
+    } else if (eventName === 'issue_comment' && (action === 'created' || action === 'edited')) {
       const issue = github.context.payload.issue!;
 
       if (issue.pull_request) {

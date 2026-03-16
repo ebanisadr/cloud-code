@@ -30119,13 +30119,15 @@ async function pushBranch() {
 /***/ }),
 
 /***/ 6645:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.postPRComment = postPRComment;
 exports.postIssueComment = postIssueComment;
+exports.fetchFilteredIssueComments = fetchFilteredIssueComments;
+const api_1 = __nccwpck_require__(8943);
 async function postPRComment(octokit, owner, repo, prNumber, body) {
     await octokit.rest.issues.createComment({
         owner,
@@ -30141,6 +30143,44 @@ async function postIssueComment(octokit, owner, repo, issueNumber, body) {
         issue_number: issueNumber,
         body,
     });
+}
+async function fetchFilteredIssueComments(octokit, owner, repo, issueNumber, allowedUsers) {
+    const { data: comments } = await octokit.rest.issues.listComments({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        per_page: 100,
+    });
+    // Determine which users are allowed — cache write-access lookups
+    const userAllowedCache = new Map();
+    async function isAllowed(username) {
+        if (userAllowedCache.has(username)) {
+            return userAllowedCache.get(username);
+        }
+        let allowed;
+        if (allowedUsers.length > 0) {
+            allowed = allowedUsers.includes(username);
+        }
+        else {
+            allowed = await (0, api_1.hasWriteAccess)(octokit, owner, repo, username);
+        }
+        userAllowedCache.set(username, allowed);
+        return allowed;
+    }
+    const lines = [];
+    for (const comment of comments) {
+        const login = comment.user?.login;
+        if (!login)
+            continue;
+        // Skip bot comments
+        if (login === 'github-actions[bot]' || login === 'cloud-code[bot]')
+            continue;
+        if (!(await isAllowed(login)))
+            continue;
+        const time = comment.created_at;
+        lines.push(`${login}: ${time}\n${comment.body}`);
+    }
+    return lines.join('\n\n');
 }
 
 
@@ -30450,7 +30490,7 @@ function getActionConfig() {
         maxContext: parseInt(core.getInput('max_context') || '200000', 10),
         fallbackMaxContext: parseInt(core.getInput('fallback_max_context') || '1000000', 10),
         projectDocs: core.getInput('project_docs') || 'docs/**/*.md',
-        dangerouslySkipPermissions: core.getInput('dangerously_skip_permissions') !== 'false',
+        dangerouslySkipPermissions: core.getBooleanInput('dangerously_skip_permissions'),
         allowedUsers: allowedUsersRaw
             ? allowedUsersRaw.split(',').map(u => u.trim()).filter(Boolean)
             : [],
@@ -30613,6 +30653,7 @@ const session_1 = __nccwpck_require__(5096);
 const runner_1 = __nccwpck_require__(5012);
 const template_1 = __nccwpck_require__(5562);
 const defaults_1 = __nccwpck_require__(4070);
+const comments_1 = __nccwpck_require__(6645);
 const common_1 = __nccwpck_require__(7060);
 async function handleIssueComment(octokit, config) {
     const { owner, repo } = github.context.repo;
@@ -30634,6 +30675,8 @@ async function handleIssueComment(octokit, config) {
     // Configure git and checkout the branch
     await (0, branch_1.configureGit)();
     await (0, branch_1.checkoutBranch)(branchName);
+    // Fetch issue comments from allowed users
+    const issueComments = await (0, comments_1.fetchFilteredIssueComments)(octokit, owner, repo, issueNumber, config.allowedUsers);
     // Render prompt with the comment as additional context
     const templateVars = {
         issue: {
@@ -30642,6 +30685,7 @@ async function handleIssueComment(octokit, config) {
             body: issue.body || '',
             labels: (issue.labels || []).map((l) => l.name).join(', '),
             author: issue.user?.login || '',
+            comments: issueComments,
         },
         repo: {
             name: repo,
@@ -30735,6 +30779,7 @@ const branch_2 = __nccwpck_require__(6675);
 const runner_1 = __nccwpck_require__(5012);
 const template_1 = __nccwpck_require__(5562);
 const defaults_1 = __nccwpck_require__(4070);
+const comments_1 = __nccwpck_require__(6645);
 const common_1 = __nccwpck_require__(7060);
 async function handleIssueOpened(octokit, config) {
     const { owner, repo } = github.context.repo;
@@ -30754,6 +30799,8 @@ async function handleIssueOpened(octokit, config) {
     // Configure git and checkout the branch
     await (0, branch_1.configureGit)();
     await (0, branch_1.checkoutBranch)(branchName);
+    // Fetch issue comments from allowed users
+    const issueComments = await (0, comments_1.fetchFilteredIssueComments)(octokit, owner, repo, issueNumber, config.allowedUsers);
     // Render prompt
     const templateVars = {
         issue: {
@@ -30762,6 +30809,7 @@ async function handleIssueOpened(octokit, config) {
             body: issue.body || '',
             labels: (issue.labels || []).map((l) => l.name).join(', '),
             author: issue.user?.login || '',
+            comments: issueComments,
         },
         repo: {
             name: repo,
@@ -31523,7 +31571,11 @@ async function run() {
         if (eventName === 'issues' && action === 'opened') {
             await (0, issue_opened_1.handleIssueOpened)(octokit, config);
         }
-        else if (eventName === 'issue_comment' && action === 'created') {
+        else if (eventName === 'issues' && action === 'edited') {
+            // Issue description was refined — start a new attempt with the updated text
+            await (0, issue_comment_1.handleIssueComment)(octokit, config);
+        }
+        else if (eventName === 'issue_comment' && (action === 'created' || action === 'edited')) {
             const issue = github.context.payload.issue;
             if (issue.pull_request) {
                 // Comment on a PR → resume session

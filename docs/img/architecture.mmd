@@ -1,0 +1,66 @@
+%%{ init: { "theme": "base", "themeVariables": { "primaryColor": "#4A90D9", "primaryTextColor": "#fff", "primaryBorderColor": "#2C6FB5", "lineColor": "#555", "secondaryColor": "#F5A623", "tertiaryColor": "#EAF2FB" } } }%%
+
+flowchart TB
+    subgraph events ["GitHub Webhook Events"]
+        E1["issues.opened"]
+        E2["issues.edited"]
+        E3["issue_comment.created/edited<br/>(on issue)"]
+        E4["issue_comment.created/edited<br/>(on PR)"]
+    end
+
+    subgraph entry ["Entry Point &mdash; src/index.ts"]
+        AUTH["Authorization Gate<br/><i>allowlist or repo permissions</i>"]
+        ROUTE["Event Router"]
+    end
+
+    subgraph handlers ["Handlers"]
+        H1["handleIssueOpened<br/><i>new branch + draft PR + first turn</i>"]
+        H2["handleIssueComment<br/><i>new attempt branch + PR + turn</i>"]
+        H3["handlePRComment<br/><i>resume session on existing branch</i>"]
+    end
+
+    subgraph shared ["Shared Execution"]
+        PROMPT["Prompt Renderer<br/><i>template interpolation</i>"]
+        CLI["Claude CLI Invocation<br/><i>--print --stream-json --max-turns 1</i>"]
+        SESSION["Session Manager<br/><i>.cloud-code/ state, backup/restore</i>"]
+        COMPACT["Compaction Handler<br/><i>context overflow recovery</i>"]
+        PARSE["Stream Parser<br/><i>text, tool calls, tokens, signals</i>"]
+    end
+
+    subgraph outputs ["GitHub API Outputs"]
+        BRANCH["Create Branches"]
+        PR["Create / Update PRs"]
+        COMMENT["Post Comments<br/><i>tool calls, response, footer</i>"]
+        LABEL["Manage Labels<br/><i>active / waiting / needs-qa / error</i>"]
+        FINISH["Finish-Up Sequence<br/><i>mark ready, close issue</i>"]
+    end
+
+    E1 & E2 & E3 & E4 --> AUTH
+    AUTH --> ROUTE
+
+    ROUTE -->|"issues.opened"| H1
+    ROUTE -->|"issues.edited / issue comment"| H2
+    ROUTE -->|"PR comment"| H3
+
+    H1 --> PROMPT
+    H2 --> PROMPT
+    H3 --> PROMPT
+
+    PROMPT --> CLI
+    CLI --> PARSE
+    PARSE --> SESSION
+    PARSE -->|"compaction signal"| COMPACT
+    COMPACT -->|"replay prompt"| CLI
+    PARSE -->|"CLOUD_CODE_DONE"| FINISH
+
+    H1 --> BRANCH
+    H1 --> PR
+    H2 --> BRANCH
+    H2 --> PR
+
+    SESSION --> BRANCH
+    PARSE --> COMMENT
+    PARSE --> LABEL
+    FINISH --> PR
+    FINISH --> COMMENT
+    FINISH --> LABEL
