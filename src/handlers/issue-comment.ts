@@ -26,7 +26,7 @@ export async function handleIssueComment(
   const { owner, repo } = github.context.repo;
   const payload = github.context.payload;
   const issue = payload.issue!;
-  const comment = payload.comment!;
+  const comment = payload.comment;
   const issueNumber = issue.number;
 
   core.info(`Handling issue comment on #${issueNumber} — creating new attempt`);
@@ -68,14 +68,14 @@ export async function handleIssueComment(
       name: repo,
       full_name: `${owner}/${repo}`,
     },
-    comment: { body: comment.body },
+    comment: { body: comment?.body ?? '' },
   };
 
   const template = config.promptTemplate || DEFAULT_PROMPT_TEMPLATE;
   let renderedPrompt = renderTemplate(template, templateVars);
 
-  // Append the comment as additional context if it's not the first issue creation
-  if (comment.body) {
+  // Append the comment as additional context (not present for issues.edited events)
+  if (comment?.body) {
     renderedPrompt += `\n\n---\n\nAdditional context from @${comment.user?.login || 'unknown'}:\n\n${comment.body}`;
   }
 

@@ -30694,12 +30694,12 @@ async function handleIssueComment(octokit, config) {
             name: repo,
             full_name: `${owner}/${repo}`,
         },
-        comment: { body: comment.body },
+        comment: { body: comment?.body ?? '' },
     };
     const template = config.promptTemplate || defaults_1.DEFAULT_PROMPT_TEMPLATE;
     let renderedPrompt = (0, template_1.renderTemplate)(template, templateVars);
-    // Append the comment as additional context if it's not the first issue creation
-    if (comment.body) {
+    // Append the comment as additional context (not present for issues.edited events)
+    if (comment?.body) {
         renderedPrompt += `\n\n---\n\nAdditional context from @${comment.user?.login || 'unknown'}:\n\n${comment.body}`;
     }
     // Initialize .cloud-code/ directory
