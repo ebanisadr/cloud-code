@@ -1,0 +1,46 @@
+# Copy this file to .github/workflows/cloud-code.yml in your repo
+
+name: Cloud Code
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: cloud-code-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  cloud-code:
+    if: >-
+      github.event_name == 'issues' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.comment.user.login != 'github-actions[bot]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ebanisadr/cloud-code@v1
+        with:
+          # --- Auth: pick ONE of the two options below ---
+
+          # Option A: API key (pay-per-use billing)
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Option B: Claude Max subscription (uses your plan's quota)
+          # Generate the secret with:
+          #   tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64
+          # claude_credentials: ${{ secrets.CLAUDE_CREDENTIALS }}
+
+          allowed_users: ''  # comma-separated usernames, or leave empty to allow repo writers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

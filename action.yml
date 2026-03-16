@@ -1,0 +1,56 @@
+name: 'Cloud Code'
+description: 'Turn GitHub Issues into autonomous Claude Code sessions'
+author: 'ebanisadr'
+
+branding:
+  icon: 'cloud'
+  color: 'orange'
+
+inputs:
+  anthropic_api_key:
+    description: 'Anthropic API key (required unless claude_credentials is provided)'
+    required: false
+    default: ''
+  claude_credentials:
+    description: >-
+      Base64-encoded Claude auth credentials for Max subscription users.
+      Generate with: tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64
+      Alternative to anthropic_api_key — one of the two must be provided.
+    required: false
+    default: ''
+  prompt_template:
+    description: 'System prompt template with {{interpolation}} variables'
+    required: false
+    default: ''
+  working_directory:
+    description: 'Claude Code working directory relative to repo root'
+    required: false
+    default: '.'
+  model:
+    description: 'Claude model identifier'
+    required: false
+    default: 'claude-opus-4-6'
+  max_context:
+    description: 'Default context window size'
+    required: false
+    default: '200000'
+  fallback_max_context:
+    description: 'Fallback context window on compaction'
+    required: false
+    default: '1000000'
+  project_docs:
+    description: 'Glob pattern for docs the agent reads on init'
+    required: false
+    default: 'docs/**/*.md'
+  dangerously_skip_permissions:
+    description: 'Pass --dangerously-skip-permissions to Claude Code'
+    required: false
+    default: 'true'
+  allowed_users:
+    description: 'Comma-separated list of usernames allowed to trigger runs. If empty, checks for repo write permission.'
+    required: false
+    default: ''
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
