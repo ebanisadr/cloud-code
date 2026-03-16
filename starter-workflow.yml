@@ -4,9 +4,9 @@ name: Cloud Code
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
   issue_comment:
-    types: [created]
+    types: [created, edited]
 
 concurrency:
   group: cloud-code-${{ github.event.issue.number }}
@@ -29,7 +29,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: ebanisadr/cloud-code@v1
+      - uses: ebanisadr/cloud-code@main
         with:
           # --- Auth: pick ONE of the two options below ---
 

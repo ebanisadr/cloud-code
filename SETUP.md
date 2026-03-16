@@ -14,6 +14,10 @@ git remote get-url origin
 
 Confirm the repo name with the user before proceeding.
 
+Then tell the user they need to enable PR creation for GitHub Actions:
+
+> Go to your repo's **Settings > Actions > General**, scroll to **Workflow permissions**, and check **"Allow GitHub Actions to create and approve pull requests"**. This is required for Cloud Code to open PRs on your behalf.
+
 ## Step 2: Create the workflow file
 
 Create `.github/workflows/cloud-code.yml` with this content:
@@ -23,9 +27,9 @@ name: Cloud Code
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
   issue_comment:
-    types: [created]
+    types: [created, edited]
 
 concurrency:
   group: cloud-code-${{ github.event.issue.number }}
@@ -48,7 +52,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: ebanisadr/cloud-code@v1
+      - uses: ebanisadr/cloud-code@main
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           allowed_users: ''
@@ -64,64 +68,86 @@ The user needs to add ONE of these secrets to their GitHub repo. Ask which they 
 
 ### Option A: Anthropic API key (pay-per-use)
 
-Tell the user:
+Ask the user for their API key (from console.anthropic.com), then offer to set it directly via the `gh` CLI:
 
-> Go to **Settings > Secrets and variables > Actions** in your GitHub repo and add a secret named `ANTHROPIC_API_KEY` with your API key from console.anthropic.com.
+```bash
+gh secret set ANTHROPIC_API_KEY --repo <owner/repo>
+```
 
-The workflow file above is already configured for this option.
+(This will prompt for the value interactively.) The workflow file from Step 2 is already configured for this option.
 
 ### Option B: Claude Max subscription (uses plan quota)
 
-If the user wants to use their Max subscription instead, they need to:
+If the user wants to use their Max subscription instead, offer to handle the whole process for them:
 
-1. Generate the credentials locally:
+1. Generate and set the secret in one step:
    ```bash
-   tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64
+   tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64 | gh secret set CLAUDE_CREDENTIALS --repo <owner/repo>
    ```
 
-2. Add the output as a secret named `CLAUDE_CREDENTIALS` in **Settings > Secrets and variables > Actions**.
-
-3. Then update the workflow file — comment out the `anthropic_api_key` line and uncomment `claude_credentials`:
+2. Then update the workflow file — replace the `anthropic_api_key` line with `claude_credentials`:
 
 ```yaml
-      - uses: ebanisadr/cloud-code@v1
+      - uses: ebanisadr/cloud-code@main
         with:
-          # claude_credentials instead of anthropic_api_key:
           claude_credentials: ${{ secrets.CLAUDE_CREDENTIALS }}
           allowed_users: ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-## Step 4: Optional — customize allowed users
+## Step 4: Configure allowed users
 
-If the user wants to restrict who can trigger Cloud Code, update the `allowed_users` field with a comma-separated list of GitHub usernames. By default (empty string), anyone with write access to the repo can trigger it.
+Ask the user for their GitHub username (and any other usernames they want to allow). Update the `allowed_users` field in the workflow file with a comma-separated list. By default (empty string), anyone with write access to the repo can trigger it — explain this and ask if they'd like to restrict it.
+
+This step **must** be completed before committing the workflow file in Step 7.
 
 ## Step 5: Optional — custom prompt template
 
-The action accepts a `prompt_template` input with `{{mustache}}` interpolation. Available variables:
+Show the user the default prompt that will be used if they don't customize it:
 
-- `{{issue.number}}`, `{{issue.title}}`, `{{issue.body}}`, `{{issue.labels}}`, `{{issue.author}}`
-- `{{repo.name}}`, `{{repo.full_name}}`
-- `{{comment.body}}`
+```
+You are an autonomous development agent working on {{repo.name}}.
 
-Example:
+Read the project documentation to understand the codebase, architecture,
+and current state of development. Then address issue #{{issue.number}}:
+
+Title: {{issue.title}}
+
+{{issue.body}}
+
+Start by determining whether this issue is actionable given the current
+state of the project. If so, propose a plan for implementing and testing
+the change. If not, explain what's blocking and what information you need.
+
+When you believe the work is complete, say "CLOUD_CODE_DONE" and provide
+a summary of changes and any testing you performed.
+```
+
+Then list the available interpolation variables:
+
+| Variable | Description |
+|---|---|
+| `{{issue.number}}` | Issue number |
+| `{{issue.title}}` | Issue title |
+| `{{issue.body}}` | Full issue body/description |
+| `{{issue.labels}}` | Comma-separated issue labels |
+| `{{issue.author}}` | GitHub username of the issue author |
+| `{{repo.name}}` | Repository name (e.g. `cloud-code`) |
+| `{{repo.full_name}}` | Full repository name (e.g. `ebanisadr/cloud-code`) |
+| `{{comment.body}}` | Comment body (for follow-up instructions) |
+
+Ask if the user wants to customize the prompt. If so, help them write one. Any custom prompt **must** include the string `CLOUD_CODE_DONE` somewhere — this is how the agent signals completion.
+
+If they provide a custom prompt, add it to the workflow file:
 
 ```yaml
-      - uses: ebanisadr/cloud-code@v1
+      - uses: ebanisadr/cloud-code@main
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt_template: |
-            You are a senior engineer working on {{repo.name}}.
-            Address issue #{{issue.number}}: {{issue.title}}
-
-            {{issue.body}}
-
-            Follow our style guide in docs/STYLE.md.
-            When done, say "CLOUD_CODE_DONE" with a summary.
+            <their custom prompt here>
 ```
-
-If a custom prompt is used, it **must** include the string `CLOUD_CODE_DONE` somewhere in the instructions — this is how the agent signals completion.
 
 ## Step 6: Optional — other settings
 
@@ -136,15 +162,16 @@ Other inputs that can be added to the `with:` block:
 | `working_directory` | `.` | Subdirectory to run Claude Code in |
 | `dangerously_skip_permissions` | `true` | Skip Claude Code permission prompts (needed for CI) |
 
-## Step 7: Commit and push
+## Step 7: Commit
 
-Commit the workflow file and push to the default branch:
+Commit the workflow file:
 
 ```bash
 git add .github/workflows/cloud-code.yml
 git commit -m "Add Cloud Code workflow"
-git push
 ```
+
+Do **not** push. Let the user push when they're ready.
 
 ## Step 8: Test it
 
