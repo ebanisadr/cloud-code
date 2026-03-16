@@ -3,6 +3,7 @@ import * as core from '@actions/core';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import { sessionBackupPath } from './session';
 import { ToolCall } from '../utils/format-comment';
 import { DONE_SIGNAL } from '../prompt/defaults';
@@ -28,6 +29,7 @@ export interface RunOptions {
   workingDirectory: string;
   apiKey: string;
   dangerouslySkipPermissions: boolean;
+  timeoutMs: number;
 }
 
 const CLAUDE_HOME = path.join(os.homedir(), '.claude');
@@ -91,6 +93,7 @@ export async function restoreClaudeSession(): Promise<void> {
 export async function runClaude(options: RunOptions): Promise<RunResult> {
   const args = [
     '--print',
+    '--verbose',
     '--output-format', 'stream-json',
     '--model', options.model,
     '--max-turns', '1',
@@ -104,7 +107,8 @@ export async function runClaude(options: RunOptions): Promise<RunResult> {
     args.push('--resume', options.sessionId);
   }
 
-  args.push(options.prompt);
+  // Prompt is piped via stdin (not as a positional arg) to avoid
+  // OS argument length limits and ensure proper delivery.
 
   const env: Record<string, string> = {
     ...process.env as Record<string, string>,
@@ -117,36 +121,81 @@ export async function runClaude(options: RunOptions): Promise<RunResult> {
     env.ANTHROPIC_API_KEY = options.apiKey;
   }
 
-  let stdout = '';
-  let stderr = '';
+  core.info(`Running Claude Code (timeout: ${options.timeoutMs / 60000}m)`);
 
-  const exitCode = await exec.exec('claude', args, {
-    cwd: options.workingDirectory,
-    env,
-    listeners: {
-      stdout: (data: Buffer) => { stdout += data.toString(); },
-      stderr: (data: Buffer) => { stderr += data.toString(); },
-    },
-    ignoreReturnCode: true,
+  return new Promise<RunResult>((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const child = spawn('claude', args, {
+      cwd: options.workingDirectory,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      core.warning(`Claude Code timed out after ${options.timeoutMs / 60000} minutes — killing process`);
+      child.kill('SIGTERM');
+      setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 10_000);
+    }, options.timeoutMs);
+
+    child.stdout.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    // Pipe prompt via stdin and close to signal EOF
+    child.stdin.write(options.prompt);
+    child.stdin.end();
+
+    child.on('close', (exitCode) => {
+      clearTimeout(timeout);
+
+      if (timedOut) {
+        // Parse whatever output we got before the timeout
+        const partial = stdout ? parseStreamOutput(stdout, options.sessionId) : null;
+        resolve({
+          sessionId: partial?.sessionId ?? options.sessionId ?? '',
+          text: (partial?.text ?? '') + `\n\nError: Claude Code timed out after ${options.timeoutMs / 60000} minutes.`,
+          toolCalls: partial?.toolCalls ?? [],
+          inputTokens: partial?.inputTokens ?? 0,
+          outputTokens: partial?.outputTokens ?? 0,
+          costUsd: partial?.costUsd ?? 0,
+          durationMs: options.timeoutMs,
+          isDone: false,
+          isCompacted: false,
+          isError: true,
+        });
+        return;
+      }
+
+      if (exitCode !== 0 && !stdout) {
+        core.error(`Claude Code exited with code ${exitCode}: ${stderr}`);
+        resolve({
+          sessionId: options.sessionId ?? '',
+          text: `Error: Claude Code exited with code ${exitCode}\n${stderr}`,
+          toolCalls: [],
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: 0,
+          durationMs: 0,
+          isDone: false,
+          isCompacted: false,
+          isError: true,
+        });
+        return;
+      }
+
+      resolve(parseStreamOutput(stdout, options.sessionId));
+    });
   });
-
-  if (exitCode !== 0 && !stdout) {
-    core.error(`Claude Code exited with code ${exitCode}: ${stderr}`);
-    return {
-      sessionId: options.sessionId ?? '',
-      text: `Error: Claude Code exited with code ${exitCode}\n${stderr}`,
-      toolCalls: [],
-      inputTokens: 0,
-      outputTokens: 0,
-      costUsd: 0,
-      durationMs: 0,
-      isDone: false,
-      isCompacted: false,
-      isError: true,
-    };
-  }
-
-  return parseStreamOutput(stdout, options.sessionId);
 }
 
 function parseStreamOutput(stdout: string, fallbackSessionId?: string): RunResult {

@@ -25,6 +25,7 @@ export interface ActionConfig {
   projectDocs: string;
   dangerouslySkipPermissions: boolean;
   allowedUsers: string[];
+  timeoutMs: number;
 }
 
 export function getActionConfig(): ActionConfig {
@@ -52,6 +53,7 @@ export function getActionConfig(): ActionConfig {
     allowedUsers: allowedUsersRaw
       ? allowedUsersRaw.split(',').map(u => u.trim()).filter(Boolean)
       : [],
+    timeoutMs: parseInt(core.getInput('timeout_minutes') || '20', 10) * 60_000,
   };
 }
 
@@ -96,6 +98,7 @@ export async function executeTurn(
     workingDirectory: config.workingDirectory,
     apiKey: config.anthropicApiKey,
     dangerouslySkipPermissions: config.dangerouslySkipPermissions,
+    timeoutMs: config.timeoutMs,
   });
 
   // Handle compaction
@@ -105,6 +108,7 @@ export async function executeTurn(
       workingDirectory: config.workingDirectory,
       apiKey: config.anthropicApiKey,
       dangerouslySkipPermissions: config.dangerouslySkipPermissions,
+      timeoutMs: config.timeoutMs,
     });
   }
 

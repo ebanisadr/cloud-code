@@ -30494,6 +30494,7 @@ function getActionConfig() {
         allowedUsers: allowedUsersRaw
             ? allowedUsersRaw.split(',').map(u => u.trim()).filter(Boolean)
             : [],
+        timeoutMs: parseInt(core.getInput('timeout_minutes') || '20', 10) * 60_000,
     };
 }
 async function executeTurn(octokit, owner, repo, issueNumber, prNumber, prompt, config, isResume) {
@@ -30525,6 +30526,7 @@ async function executeTurn(octokit, owner, repo, issueNumber, prNumber, prompt, 
         workingDirectory: config.workingDirectory,
         apiKey: config.anthropicApiKey,
         dangerouslySkipPermissions: config.dangerouslySkipPermissions,
+        timeoutMs: config.timeoutMs,
     });
     // Handle compaction
     if (result.isCompacted) {
@@ -30533,6 +30535,7 @@ async function executeTurn(octokit, owner, repo, issueNumber, prNumber, prompt, 
             workingDirectory: config.workingDirectory,
             apiKey: config.anthropicApiKey,
             dangerouslySkipPermissions: config.dangerouslySkipPermissions,
+            timeoutMs: config.timeoutMs,
         });
     }
     // Write the assistant turn
@@ -31062,6 +31065,7 @@ const core = __importStar(__nccwpck_require__(7484));
 const fs = __importStar(__nccwpck_require__(9896));
 const os = __importStar(__nccwpck_require__(857));
 const path = __importStar(__nccwpck_require__(6928));
+const child_process_1 = __nccwpck_require__(5317);
 const session_1 = __nccwpck_require__(5096);
 const defaults_1 = __nccwpck_require__(4070);
 const CLAUDE_HOME = path.join(os.homedir(), '.claude');
@@ -31114,6 +31118,7 @@ async function restoreClaudeSession() {
 async function runClaude(options) {
     const args = [
         '--print',
+        '--verbose',
         '--output-format', 'stream-json',
         '--model', options.model,
         '--max-turns', '1',
@@ -31124,7 +31129,8 @@ async function runClaude(options) {
     if (options.sessionId) {
         args.push('--resume', options.sessionId);
     }
-    args.push(options.prompt);
+    // Prompt is piped via stdin (not as a positional arg) to avoid
+    // OS argument length limits and ensure proper delivery.
     const env = {
         ...process.env,
     };
@@ -31134,33 +31140,72 @@ async function runClaude(options) {
     if (options.apiKey) {
         env.ANTHROPIC_API_KEY = options.apiKey;
     }
-    let stdout = '';
-    let stderr = '';
-    const exitCode = await exec.exec('claude', args, {
-        cwd: options.workingDirectory,
-        env,
-        listeners: {
-            stdout: (data) => { stdout += data.toString(); },
-            stderr: (data) => { stderr += data.toString(); },
-        },
-        ignoreReturnCode: true,
+    core.info(`Running Claude Code (timeout: ${options.timeoutMs / 60000}m)`);
+    return new Promise((resolve) => {
+        let stdout = '';
+        let stderr = '';
+        let timedOut = false;
+        const child = (0, child_process_1.spawn)('claude', args, {
+            cwd: options.workingDirectory,
+            env,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        const timeout = setTimeout(() => {
+            timedOut = true;
+            core.warning(`Claude Code timed out after ${options.timeoutMs / 60000} minutes — killing process`);
+            child.kill('SIGTERM');
+            setTimeout(() => {
+                if (!child.killed)
+                    child.kill('SIGKILL');
+            }, 10_000);
+        }, options.timeoutMs);
+        child.stdout.on('data', (data) => {
+            stdout += data.toString();
+        });
+        child.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+        // Pipe prompt via stdin and close to signal EOF
+        child.stdin.write(options.prompt);
+        child.stdin.end();
+        child.on('close', (exitCode) => {
+            clearTimeout(timeout);
+            if (timedOut) {
+                // Parse whatever output we got before the timeout
+                const partial = stdout ? parseStreamOutput(stdout, options.sessionId) : null;
+                resolve({
+                    sessionId: partial?.sessionId ?? options.sessionId ?? '',
+                    text: (partial?.text ?? '') + `\n\nError: Claude Code timed out after ${options.timeoutMs / 60000} minutes.`,
+                    toolCalls: partial?.toolCalls ?? [],
+                    inputTokens: partial?.inputTokens ?? 0,
+                    outputTokens: partial?.outputTokens ?? 0,
+                    costUsd: partial?.costUsd ?? 0,
+                    durationMs: options.timeoutMs,
+                    isDone: false,
+                    isCompacted: false,
+                    isError: true,
+                });
+                return;
+            }
+            if (exitCode !== 0 && !stdout) {
+                core.error(`Claude Code exited with code ${exitCode}: ${stderr}`);
+                resolve({
+                    sessionId: options.sessionId ?? '',
+                    text: `Error: Claude Code exited with code ${exitCode}\n${stderr}`,
+                    toolCalls: [],
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    costUsd: 0,
+                    durationMs: 0,
+                    isDone: false,
+                    isCompacted: false,
+                    isError: true,
+                });
+                return;
+            }
+            resolve(parseStreamOutput(stdout, options.sessionId));
+        });
     });
-    if (exitCode !== 0 && !stdout) {
-        core.error(`Claude Code exited with code ${exitCode}: ${stderr}`);
-        return {
-            sessionId: options.sessionId ?? '',
-            text: `Error: Claude Code exited with code ${exitCode}\n${stderr}`,
-            toolCalls: [],
-            inputTokens: 0,
-            outputTokens: 0,
-            costUsd: 0,
-            durationMs: 0,
-            isDone: false,
-            isCompacted: false,
-            isError: true,
-        };
-    }
-    return parseStreamOutput(stdout, options.sessionId);
 }
 function parseStreamOutput(stdout, fallbackSessionId) {
     const lines = stdout.trim().split('\n').filter(Boolean);

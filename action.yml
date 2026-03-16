@@ -50,6 +50,10 @@ inputs:
     description: 'Comma-separated list of usernames allowed to trigger runs. If empty, checks for repo write permission.'
     required: false
     default: ''
+  timeout_minutes:
+    description: 'Maximum minutes for a single Claude Code turn before killing the process'
+    required: false
+    default: '20'
 
 runs:
   using: 'node20'

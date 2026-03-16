@@ -11,6 +11,7 @@ export interface ActionConfig {
     projectDocs: string;
     dangerouslySkipPermissions: boolean;
     allowedUsers: string[];
+    timeoutMs: number;
 }
 export declare function getActionConfig(): ActionConfig;
 export declare function executeTurn(octokit: Octokit, owner: string, repo: string, issueNumber: number, prNumber: number, prompt: string, config: ActionConfig, isResume: boolean): Promise<RunResult>;

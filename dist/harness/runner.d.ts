@@ -19,6 +19,7 @@ export interface RunOptions {
     workingDirectory: string;
     apiKey: string;
     dangerouslySkipPermissions: boolean;
+    timeoutMs: number;
 }
 export declare function installClaude(): Promise<void>;
 export declare function restoreAuthCredentials(base64Tarball: string): Promise<void>;

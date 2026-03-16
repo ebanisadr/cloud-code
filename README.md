@@ -45,6 +45,7 @@ For a detailed walkthrough, see [docs/system-design.md](docs/system-design.md).
 | `project_docs` | `docs/**/*.md` | Glob for docs the agent reads on init |
 | `allowed_users` | | Comma-separated usernames (empty = repo writers) |
 | `dangerously_skip_permissions` | `true` | Skip Claude Code permission prompts |
+| `timeout_minutes` | `20` | Max minutes per Claude Code turn before killing the process |
 | `working_directory` | `.` | Working directory relative to repo root |
 
 ## Labels
