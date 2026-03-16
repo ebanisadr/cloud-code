@@ -123,10 +123,10 @@ Every turn is written to `.cloud-code/turns/` as numbered Markdown files (`001-h
 
 The CLI maintains its own conversation state in `~/.claude/` on the runner filesystem. Since each GitHub Actions job starts with a clean runner, this state must be preserved between turns:
 
-- **Backup**: after each turn, `.claude/` is tar'd (excluding auth credentials) and saved to `.cloud-code/claude-session.tar.gz` on the branch.
+- **Backup**: after each turn, `.claude/` is tar'd and saved to `.cloud-code/claude-session.tar.gz` on the branch.
 - **Restore**: on PR comment events (which resume a session), the tarball is extracted to `~/.claude/` before running `--resume {sessionId}`.
 
-Auth credentials are handled separately -- restored from the `claude_credentials` secret at the start of every run, before the session restore. This ensures credentials never get committed to a branch.
+Auth is handled via environment variables (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`), so no credentials are stored on disk or committed to branches.
 
 ## Claude Code Execution
 

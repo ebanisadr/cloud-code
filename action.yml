@@ -8,13 +8,13 @@ branding:
 
 inputs:
   anthropic_api_key:
-    description: 'Anthropic API key (required unless claude_credentials is provided)'
+    description: 'Anthropic API key (required unless claude_code_oauth_token is provided)'
     required: false
     default: ''
-  claude_credentials:
+  claude_code_oauth_token:
     description: >-
-      Base64-encoded Claude auth credentials for Max subscription users.
-      Generate with: tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64
+      Claude Code OAuth token for Max/Team subscription users.
+      Generate with: claude setup-token (requires Claude subscription).
       Alternative to anthropic_api_key — one of the two must be provided.
     required: false
     default: ''

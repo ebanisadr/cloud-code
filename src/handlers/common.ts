@@ -5,7 +5,7 @@ import { commitAndPush } from '../github/branch';
 import { postPRComment, postIssueComment } from '../github/comments';
 import { setLabel, LABELS } from '../github/labels';
 import { updatePRDescription, markPRReady } from '../github/pr';
-import { RunResult, runClaude, backupClaudeSession, restoreClaudeSession, restoreAuthCredentials } from '../harness/runner';
+import { RunResult, runClaude, backupClaudeSession, restoreClaudeSession } from '../harness/runner';
 import { SessionState, readSession, writeSession, updateSessionAfterTurn } from '../harness/session';
 import { writeTurn, getNextTurnNumber, buildSessionLog } from '../harness/turn-logger';
 import { handleCompaction } from '../harness/compaction';
@@ -16,7 +16,7 @@ import { buildFinishPRBody } from '../github/pr';
 
 export interface ActionConfig {
   anthropicApiKey: string;
-  claudeCredentials: string;
+  claudeOAuthToken: string;
   promptTemplate: string;
   workingDirectory: string;
   model: string;
@@ -31,18 +31,18 @@ export interface ActionConfig {
 export function getActionConfig(): ActionConfig {
   const allowedUsersRaw = core.getInput('allowed_users');
   const anthropicApiKey = core.getInput('anthropic_api_key');
-  const claudeCredentials = core.getInput('claude_credentials');
+  const claudeOAuthToken = core.getInput('claude_code_oauth_token');
 
-  if (!anthropicApiKey && !claudeCredentials) {
+  if (!anthropicApiKey && !claudeOAuthToken) {
     throw new Error(
-      'Either anthropic_api_key or claude_credentials must be provided. ' +
-      'Use anthropic_api_key for API billing, or claude_credentials for Max subscription auth.'
+      'Either anthropic_api_key or claude_code_oauth_token must be provided. ' +
+      'Use anthropic_api_key for API billing, or claude_code_oauth_token for Max/Team subscription auth.'
     );
   }
 
   return {
     anthropicApiKey,
-    claudeCredentials,
+    claudeOAuthToken,
     promptTemplate: core.getInput('prompt_template'),
     workingDirectory: core.getInput('working_directory') || '.',
     model: core.getInput('model') || 'claude-opus-4-6',
@@ -71,12 +71,7 @@ export async function executeTurn(
   const humanTurnNumber = getNextTurnNumber();
   writeTurn(humanTurnNumber, 'human', prompt);
 
-  // Restore auth credentials (from secret) — always first, before session restore
-  if (config.claudeCredentials) {
-    await restoreAuthCredentials(config.claudeCredentials);
-  }
-
-  // Restore Claude session if resuming (layered on top of auth)
+  // Restore Claude session if resuming
   if (isResume) {
     await restoreClaudeSession();
   }
@@ -97,6 +92,7 @@ export async function executeTurn(
     sessionId: isResume && session.id ? session.id : undefined,
     workingDirectory: config.workingDirectory,
     apiKey: config.anthropicApiKey,
+    oauthToken: config.claudeOAuthToken,
     dangerouslySkipPermissions: config.dangerouslySkipPermissions,
     timeoutMs: config.timeoutMs,
   });
@@ -107,6 +103,7 @@ export async function executeTurn(
       model: config.model,
       workingDirectory: config.workingDirectory,
       apiKey: config.anthropicApiKey,
+      oauthToken: config.claudeOAuthToken,
       dangerouslySkipPermissions: config.dangerouslySkipPermissions,
       timeoutMs: config.timeoutMs,
     });

@@ -76,21 +76,24 @@ gh secret set ANTHROPIC_API_KEY --repo <owner/repo>
 
 (This will prompt for the value interactively.) The workflow file from Step 2 is already configured for this option.
 
-### Option B: Claude Max subscription (uses plan quota)
+### Option B: Claude Max/Team subscription (uses plan quota)
 
-If the user wants to use their Max subscription instead, offer to handle the whole process for them:
+If the user wants to use their subscription instead:
 
-1. Generate and set the secret in one step:
+1. Run `claude setup-token` locally — this opens a browser to authorize and prints a long-lived OAuth token.
+
+2. Set the token as a secret:
    ```bash
-   tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64 | gh secret set CLAUDE_CREDENTIALS --repo <owner/repo>
+   gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner/repo>
    ```
+   (This will prompt for the value interactively — paste the token from step 1.)
 
-2. Then update the workflow file — replace the `anthropic_api_key` line with `claude_credentials`:
+3. Then update the workflow file — replace the `anthropic_api_key` line with `claude_code_oauth_token`:
 
 ```yaml
       - uses: ebanisadr/cloud-code@main
         with:
-          claude_credentials: ${{ secrets.CLAUDE_CREDENTIALS }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_users: ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -30476,14 +30476,14 @@ const pr_2 = __nccwpck_require__(3437);
 function getActionConfig() {
     const allowedUsersRaw = core.getInput('allowed_users');
     const anthropicApiKey = core.getInput('anthropic_api_key');
-    const claudeCredentials = core.getInput('claude_credentials');
-    if (!anthropicApiKey && !claudeCredentials) {
-        throw new Error('Either anthropic_api_key or claude_credentials must be provided. ' +
-            'Use anthropic_api_key for API billing, or claude_credentials for Max subscription auth.');
+    const claudeOAuthToken = core.getInput('claude_code_oauth_token');
+    if (!anthropicApiKey && !claudeOAuthToken) {
+        throw new Error('Either anthropic_api_key or claude_code_oauth_token must be provided. ' +
+            'Use anthropic_api_key for API billing, or claude_code_oauth_token for Max/Team subscription auth.');
     }
     return {
         anthropicApiKey,
-        claudeCredentials,
+        claudeOAuthToken,
         promptTemplate: core.getInput('prompt_template'),
         workingDirectory: core.getInput('working_directory') || '.',
         model: core.getInput('model') || 'claude-opus-4-6',
@@ -30501,11 +30501,7 @@ async function executeTurn(octokit, owner, repo, issueNumber, prNumber, prompt, 
     // Write the human turn
     const humanTurnNumber = (0, turn_logger_1.getNextTurnNumber)();
     (0, turn_logger_1.writeTurn)(humanTurnNumber, 'human', prompt);
-    // Restore auth credentials (from secret) — always first, before session restore
-    if (config.claudeCredentials) {
-        await (0, runner_1.restoreAuthCredentials)(config.claudeCredentials);
-    }
-    // Restore Claude session if resuming (layered on top of auth)
+    // Restore Claude session if resuming
     if (isResume) {
         await (0, runner_1.restoreClaudeSession)();
     }
@@ -30525,6 +30521,7 @@ async function executeTurn(octokit, owner, repo, issueNumber, prNumber, prompt, 
         sessionId: isResume && session.id ? session.id : undefined,
         workingDirectory: config.workingDirectory,
         apiKey: config.anthropicApiKey,
+        oauthToken: config.claudeOAuthToken,
         dangerouslySkipPermissions: config.dangerouslySkipPermissions,
         timeoutMs: config.timeoutMs,
     });
@@ -30534,6 +30531,7 @@ async function executeTurn(octokit, owner, repo, issueNumber, prNumber, prompt, 
             model: config.model,
             workingDirectory: config.workingDirectory,
             apiKey: config.anthropicApiKey,
+            oauthToken: config.claudeOAuthToken,
             dangerouslySkipPermissions: config.dangerouslySkipPermissions,
             timeoutMs: config.timeoutMs,
         });
@@ -31056,7 +31054,6 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.installClaude = installClaude;
-exports.restoreAuthCredentials = restoreAuthCredentials;
 exports.backupClaudeSession = backupClaudeSession;
 exports.restoreClaudeSession = restoreClaudeSession;
 exports.runClaude = runClaude;
@@ -31069,30 +31066,10 @@ const child_process_1 = __nccwpck_require__(5317);
 const session_1 = __nccwpck_require__(5096);
 const defaults_1 = __nccwpck_require__(4070);
 const CLAUDE_HOME = path.join(os.homedir(), '.claude');
-// Files that contain auth credentials — excluded from session backups
-// so they never get committed to a branch.
-const AUTH_EXCLUDE_PATTERNS = [
-    '.credentials.json',
-    'credentials.json',
-    'auth.json',
-    'oauth*',
-    'statsig',
-    'config.json',
-];
 async function installClaude() {
     core.info('Installing Claude Code CLI...');
     await exec.exec('npm', ['install', '-g', '@anthropic-ai/claude-code']);
     core.info('Claude Code CLI installed');
-}
-async function restoreAuthCredentials(base64Tarball) {
-    core.info('Restoring Claude auth credentials from secret...');
-    fs.mkdirSync(CLAUDE_HOME, { recursive: true });
-    const tarball = Buffer.from(base64Tarball, 'base64');
-    const tmpFile = path.join(os.tmpdir(), 'claude-auth.tar.gz');
-    fs.writeFileSync(tmpFile, tarball);
-    await exec.exec('tar', ['xzf', tmpFile, '-C', os.homedir()]);
-    fs.unlinkSync(tmpFile);
-    core.info('Claude auth credentials restored');
 }
 async function backupClaudeSession() {
     if (!fs.existsSync(CLAUDE_HOME)) {
@@ -31101,9 +31078,7 @@ async function backupClaudeSession() {
     }
     const backupFile = (0, session_1.sessionBackupPath)();
     core.info(`Backing up Claude session to ${backupFile}`);
-    // Exclude auth-related files so credentials never get committed to a branch
-    const excludeArgs = AUTH_EXCLUDE_PATTERNS.flatMap(p => ['--exclude', `.claude/${p}`]);
-    await exec.exec('tar', ['czf', backupFile, ...excludeArgs, '-C', os.homedir(), '.claude']);
+    await exec.exec('tar', ['czf', backupFile, '-C', os.homedir(), '.claude']);
 }
 async function restoreClaudeSession() {
     const backupFile = (0, session_1.sessionBackupPath)();
@@ -31134,11 +31109,11 @@ async function runClaude(options) {
     const env = {
         ...process.env,
     };
-    // Only set ANTHROPIC_API_KEY when using API key auth.
-    // When using claude_credentials (Max subscription), auth comes
-    // from the restored ~/.claude/ credentials files instead.
     if (options.apiKey) {
         env.ANTHROPIC_API_KEY = options.apiKey;
+    }
+    if (options.oauthToken) {
+        env.CLAUDE_CODE_OAUTH_TOKEN = options.oauthToken;
     }
     core.info(`Running Claude Code (timeout: ${options.timeoutMs / 60000}m)`);
     return new Promise((resolve) => {

@@ -18,11 +18,11 @@ export interface RunOptions {
     sessionId?: string;
     workingDirectory: string;
     apiKey: string;
+    oauthToken?: string;
     dangerouslySkipPermissions: boolean;
     timeoutMs: number;
 }
 export declare function installClaude(): Promise<void>;
-export declare function restoreAuthCredentials(base64Tarball: string): Promise<void>;
 export declare function backupClaudeSession(): Promise<void>;
 export declare function restoreClaudeSession(): Promise<void>;
 export declare function runClaude(options: RunOptions): Promise<RunResult>;

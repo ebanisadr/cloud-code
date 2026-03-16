@@ -30,14 +30,14 @@ For a detailed walkthrough, see [docs/system-design.md](docs/system-design.md).
 | Method | Input | How |
 |---|---|---|
 | API key | `anthropic_api_key` | Add `ANTHROPIC_API_KEY` to repo secrets |
-| Max subscription | `claude_credentials` | `tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null \| base64` then add as `CLAUDE_CREDENTIALS` secret |
+| Max/Team subscription | `claude_code_oauth_token` | Run `claude setup-token`, then add as `CLAUDE_CODE_OAUTH_TOKEN` secret |
 
 ## Inputs
 
 | Input | Default | Description |
 |---|---|---|
 | `anthropic_api_key` | | Anthropic API key |
-| `claude_credentials` | | Base64-encoded Claude auth (alternative to API key) |
+| `claude_code_oauth_token` | | Claude Code OAuth token (alternative to API key) |
 | `prompt_template` | built-in | System prompt with `{{issue.title}}`, `{{issue.body}}`, etc. |
 | `model` | `claude-opus-4-6` | Model identifier |
 | `max_context` | `200000` | Context window size |
@@ -114,7 +114,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-For Max subscription auth, replace the `anthropic_api_key` line with `claude_credentials: ${{ secrets.CLAUDE_CREDENTIALS }}`.
+For Max/Team subscription auth, replace the `anthropic_api_key` line with `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`.
 
 ### Prerequisites
 
@@ -129,11 +129,11 @@ There are two options. Users need exactly one:
 gh secret set ANTHROPIC_API_KEY --repo <owner/repo>
 ```
 
-**Option B -- Max subscription:** Generate and set the credential secret:
+**Option B -- Max/Team subscription:** Run `claude setup-token` locally (opens browser to authorize), then set the token as a secret:
 ```bash
-tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64 | gh secret set CLAUDE_CREDENTIALS --repo <owner/repo>
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner/repo>
 ```
-Then use `claude_credentials` instead of `anthropic_api_key` in the workflow file.
+Then use `claude_code_oauth_token` instead of `anthropic_api_key` in the workflow file.
 
 ### Authorization
 
@@ -197,10 +197,10 @@ Any custom prompt **must** include the literal string `CLOUD_CODE_DONE` -- this 
 
 > The CLI maintains its own conversation state in `~/.claude/` on the runner filesystem. Since each GitHub Actions job starts with a clean runner, this state must be preserved between turns:
 >
-> - **Backup**: after each turn, `.claude/` is tar'd (excluding auth credentials) and saved to `.cloud-code/claude-session.tar.gz` on the branch.
+> - **Backup**: after each turn, `.claude/` is tar'd and saved to `.cloud-code/claude-session.tar.gz` on the branch.
 > - **Restore**: on PR comment events (which resume a session), the tarball is extracted to `~/.claude/` before running `--resume {sessionId}`.
 >
-> Auth credentials are handled separately -- restored from the `claude_credentials` secret at the start of every run, before the session restore. This ensures credentials never get committed to a branch.
+> Auth is handled via environment variables (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`), so no credentials are stored on disk or committed to branches.
 
 ### Concurrency
 
@@ -247,7 +247,7 @@ Yes. Set `prompt_template` in the workflow `with:` block. Use the template varia
 > When Claude's output contains `CLOUD_CODE_DONE`, the action extracts the summary, generates a `git diff --stat`, builds a session log from all turns, updates the PR description with a structured summary including `Fixes #N` (to auto-close the issue on merge), marks the PR ready for review via the GraphQL API, and posts an issue comment notifying that the PR is ready.
 
 **Q: What if the action isn't triggering?**
-Check: (1) the workflow file is on the default branch, (2) the sender has write access or is in `allowed_users`, (3) the "Allow GitHub Actions to create and approve pull requests" setting is enabled, (4) the `ANTHROPIC_API_KEY` or `CLAUDE_CREDENTIALS` secret is set.
+Check: (1) the workflow file is on the default branch, (2) the sender has write access or is in `allowed_users`, (3) the "Allow GitHub Actions to create and approve pull requests" setting is enabled, (4) the `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret is set.
 
 **Q: Can multiple issues run in parallel?**
 Yes. Concurrency is scoped per issue (`cloud-code-${{ github.event.issue.number }}`), so different issues run independently. Multiple events on the same issue queue sequentially.

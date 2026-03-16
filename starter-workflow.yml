@@ -36,10 +36,9 @@ jobs:
           # Option A: API key (pay-per-use billing)
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          # Option B: Claude Max subscription (uses your plan's quota)
-          # Generate the secret with:
-          #   tar czf - -C ~ .claude/.credentials.json .claude/statsig/ .claude/config.json 2>/dev/null | base64
-          # claude_credentials: ${{ secrets.CLAUDE_CREDENTIALS }}
+          # Option B: Claude Max/Team subscription (uses your plan's quota)
+          # Run `claude setup-token` locally, then add as CLAUDE_CODE_OAUTH_TOKEN secret
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           allowed_users: ''  # comma-separated usernames, or leave empty to allow repo writers
         env:

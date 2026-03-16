@@ -28,40 +28,17 @@ export interface RunOptions {
   sessionId?: string;
   workingDirectory: string;
   apiKey: string;
+  oauthToken?: string;
   dangerouslySkipPermissions: boolean;
   timeoutMs: number;
 }
 
 const CLAUDE_HOME = path.join(os.homedir(), '.claude');
 
-// Files that contain auth credentials — excluded from session backups
-// so they never get committed to a branch.
-const AUTH_EXCLUDE_PATTERNS = [
-  '.credentials.json',
-  'credentials.json',
-  'auth.json',
-  'oauth*',
-  'statsig',
-  'config.json',
-];
-
 export async function installClaude(): Promise<void> {
   core.info('Installing Claude Code CLI...');
   await exec.exec('npm', ['install', '-g', '@anthropic-ai/claude-code']);
   core.info('Claude Code CLI installed');
-}
-
-export async function restoreAuthCredentials(base64Tarball: string): Promise<void> {
-  core.info('Restoring Claude auth credentials from secret...');
-  fs.mkdirSync(CLAUDE_HOME, { recursive: true });
-
-  const tarball = Buffer.from(base64Tarball, 'base64');
-  const tmpFile = path.join(os.tmpdir(), 'claude-auth.tar.gz');
-  fs.writeFileSync(tmpFile, tarball);
-
-  await exec.exec('tar', ['xzf', tmpFile, '-C', os.homedir()]);
-  fs.unlinkSync(tmpFile);
-  core.info('Claude auth credentials restored');
 }
 
 export async function backupClaudeSession(): Promise<void> {
@@ -73,9 +50,7 @@ export async function backupClaudeSession(): Promise<void> {
   const backupFile = sessionBackupPath();
   core.info(`Backing up Claude session to ${backupFile}`);
 
-  // Exclude auth-related files so credentials never get committed to a branch
-  const excludeArgs = AUTH_EXCLUDE_PATTERNS.flatMap(p => ['--exclude', `.claude/${p}`]);
-  await exec.exec('tar', ['czf', backupFile, ...excludeArgs, '-C', os.homedir(), '.claude']);
+  await exec.exec('tar', ['czf', backupFile, '-C', os.homedir(), '.claude']);
 }
 
 export async function restoreClaudeSession(): Promise<void> {
@@ -114,11 +89,12 @@ export async function runClaude(options: RunOptions): Promise<RunResult> {
     ...process.env as Record<string, string>,
   };
 
-  // Only set ANTHROPIC_API_KEY when using API key auth.
-  // When using claude_credentials (Max subscription), auth comes
-  // from the restored ~/.claude/ credentials files instead.
   if (options.apiKey) {
     env.ANTHROPIC_API_KEY = options.apiKey;
+  }
+
+  if (options.oauthToken) {
+    env.CLAUDE_CODE_OAUTH_TOKEN = options.oauthToken;
   }
 
   core.info(`Running Claude Code (timeout: ${options.timeoutMs / 60000}m)`);

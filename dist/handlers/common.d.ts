@@ -2,7 +2,7 @@ import { Octokit } from '../github/api';
 import { RunResult } from '../harness/runner';
 export interface ActionConfig {
     anthropicApiKey: string;
-    claudeCredentials: string;
+    claudeOAuthToken: string;
     promptTemplate: string;
     workingDirectory: string;
     model: string;
