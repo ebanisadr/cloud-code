@@ -71,7 +71,6 @@ export async function runClaude(options: RunOptions): Promise<RunResult> {
     '--verbose',
     '--output-format', 'stream-json',
     '--model', options.model,
-    '--max-turns', '1',
   ];
 
   if (options.dangerouslySkipPermissions) {

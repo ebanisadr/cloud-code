@@ -133,13 +133,12 @@ Auth is handled via environment variables (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_O
 The action invokes the CLI as a subprocess:
 
 ```
-claude --print --output-format stream-json --model {model} --max-turns 1 {prompt}
+claude --print --output-format stream-json --model {model} {prompt}
 ```
 
 Key flags:
 - `--print` runs in non-interactive mode.
 - `--output-format stream-json` produces newline-delimited JSON, parsed for text content, tool calls, token usage, session ID, and the completion signal.
-- `--max-turns 1` limits Claude to a single agent turn per workflow run. Multi-turn work spans multiple runs, resumed via PR comments.
 - `--resume {sessionId}` continues a previous conversation (for PR comment events).
 
 ### Stream Parsing

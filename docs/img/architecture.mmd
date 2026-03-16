@@ -21,7 +21,7 @@ flowchart TB
 
     subgraph shared ["Shared Execution"]
         PROMPT["Prompt Renderer<br/><i>template interpolation</i>"]
-        CLI["Claude CLI Invocation<br/><i>--print --stream-json --max-turns 1</i>"]
+        CLI["Claude CLI Invocation<br/><i>--print --stream-json</i>"]
         SESSION["Session Manager<br/><i>.cloud-code/ state, backup/restore</i>"]
         COMPACT["Compaction Handler<br/><i>context overflow recovery</i>"]
         PARSE["Stream Parser<br/><i>text, tool calls, tokens, signals</i>"]

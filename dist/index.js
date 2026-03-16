@@ -31096,7 +31096,6 @@ async function runClaude(options) {
         '--verbose',
         '--output-format', 'stream-json',
         '--model', options.model,
-        '--max-turns', '1',
     ];
     if (options.dangerouslySkipPermissions) {
         args.push('--dangerously-skip-permissions');
